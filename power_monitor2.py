@@ -1,11 +1,6 @@
 #!/usr/bin/env python3
 """
-POWER MONITOR NODE - MULTI-MISSION CAPABLE VERSION
-Fixed-wing power monitor with proper PX4 main mode mapping and multi-mission support
-- Corrected nav_state mapping from PX4 main VehicleStatus.msg
-- Handles mission → land → new mission scenario properly
-- Maintains battery history across missions in same session
-- Updates home position for each new mission
+POWER MONITOR NODE - FINAL VERSION
 """
 
 import rclpy
@@ -237,9 +232,6 @@ class PowerMonitorMultiMission(Node):
         
         THIS IS NOT USED IN ANY BATTERY OR RTL CALCULATIONS!
         Only for pilot information and post-flight analysis.
-        
-        Uses hyperbolic model: efficiency = K / (1 + (h/b)^n)
-        where h = height AGL, b = wing span
         """
         if altitude_agl is None or altitude_agl < 0:
             return 0.0
@@ -247,12 +239,12 @@ class PowerMonitorMultiMission(Node):
         h_over_b = altitude_agl / self.wing_span
         
         # Hyperbolic model parameters
-        K = 0.35  # Maximum 35% efficiency gain at very low altitude
-        n = 2.5   # Decay exponent controlling how fast efficiency drops off
+        K = 0.35  # Maximum 35% efficiency gain
+        p = 0.9979433 
+        q = 2.7269718
         
-        # Only calculate if within WIG effect range (h/b < 2.0)
         if h_over_b < 2.0: 
-            efficiency_gain = K / (1 + (h_over_b ** n))
+            efficiency_gain = K / ((1 + (h_over_b ** p))**q)
             return efficiency_gain
         else:
             return 0.0
