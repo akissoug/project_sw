@@ -172,13 +172,13 @@ class PowerMonitorMultiMission(Node):
         self.get_logger().info(f'  • Max Efficiency: +35% at h/b ≈ 0.1')
         self.get_logger().info(f'  • Model: K/(1+(h/b)^n) where K=0.35, n=2.5')
         self.get_logger().info(f'  ⚠️ NOTE: WIG efficiency is NOT used in RTL calculations')
-        self.get_logger().info(f'⏱️ Grace Periods:')
-        self.get_logger().info(f'  • Mission Start: {self.mission_start_grace:.0f}s')
-        self.get_logger().info(f'  • Min Flight Time: {self.min_flight_time:.0f}s')
         self.get_logger().info(f'🌊 WIG Effect Parameters (Logging Only):')
         self.get_logger().info(f'  • Wing Span: {self.wing_span:.1f}m')
         self.get_logger().info(f'  • WIG Tracking Below: {self.wig_height_threshold:.1f}m')
         self.get_logger().info(f'  • Min Safe Altitude: {self.min_safe_alt:.1f}m')
+        self.get_logger().info(f'⏱️ Grace Periods:')
+        self.get_logger().info(f'  • Mission Start: {self.mission_start_grace:.0f}s')
+        self.get_logger().info(f'  • Min Flight Time: {self.min_flight_time:.0f}s')
         self.get_logger().info('='*60)
     
     def get_px4_mode_name(self, nav_state):
