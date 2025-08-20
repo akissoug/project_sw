@@ -224,10 +224,11 @@ class PowerMonitorMultiMission(Node):
         
         # Hyperbolic model parameters
         K = 0.35  # Maximum 35% efficiency gain
-        n = 2.5   # Decay exponent
+        p = 0.9979433 
+        q = 2.7269718
         
         if h_over_b < 2.0: 
-            efficiency_gain = K / (1 + (h_over_b ** n))
+            efficiency_gain = K / ((1 + (h_over_b ** p))**q)
             return efficiency_gain
         else:
             return 0.0
