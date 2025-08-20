@@ -1,11 +1,6 @@
 #!/usr/bin/env python3
 """
-POWER MONITOR NODE - MULTI-MISSION CAPABLE VERSION
-Fixed-wing power monitor with proper PX4 main mode mapping and multi-mission support
-- Corrected nav_state mapping from PX4 main VehicleStatus.msg
-- Handles mission → land → new mission scenario properly
-- Maintains battery history across missions in same session
-- Updates home position for each new mission
+POWER MONITOR NODE - FINAL VERSION
 """
 
 import rclpy
