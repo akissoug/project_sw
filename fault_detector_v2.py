@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """
 FAULT DETECTOR NODE - IMPROVED VERSION
-Focuses on sensor health monitoring and critical system failures
-Does NOT handle battery (power_monitor's job) or mission state (supervisor's job)
 """
 
 import rclpy
