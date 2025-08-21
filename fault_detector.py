@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """
 FAULT DETECTOR NODE - IMPROVED VERSION
-Focuses on sensor health monitoring and critical system failures
-Does NOT handle battery (power_monitor's job) or mission state (supervisor's job)
 """
 
 import rclpy
@@ -223,22 +221,29 @@ class FaultDetector(Node):
 
     def print_startup_info(self):
         """Print startup configuration"""
+        mode_str = "SITL MODE" if self.sitl_mode else "REAL CRAFT MODE"
         self.get_logger().info('='*60)
-        self.get_logger().info('FAULT DETECTOR - SENSOR HEALTH MONITOR')
+        self.get_logger().info(f'FAULT DETECTOR - SENSOR HEALTH MONITOR ({mode_str})')
         self.get_logger().info('='*60)
         self.get_logger().info(f'📡 Monitoring Sensors:')
-        self.get_logger().info(f'  • GPS: {self.min_satellites} sats, fix type ≥ {self.min_fix_type}')
-        if self.enable_sensor_checks:
-            self.get_logger().info(f'  • IMU: max inconsistency {self.max_imu_inconsistency}')
-            self.get_logger().info(f'  • Magnetometer: max inconsistency {self.max_mag_inconsistency}')
-            self.get_logger().info(f'  • Barometer: timeout {self.baro_timeout}s')
-            self.get_logger().info(f'  • RC: quality ≥ {self.min_rc_quality}%')
+        
+        if self.sitl_mode:
+            self.get_logger().info(f'  • GPS: 6+ sats, fix type ≥ 2 (relaxed for SITL)')
+            self.get_logger().info(f'  • Failure threshold: {self.gps_failure_threshold*2} consecutive')
+            self.get_logger().info(f'  • Sensor checks: Limited in SITL')
+        else:
+            self.get_logger().info(f'  • GPS: {self.min_satellites} sats, fix type ≥ {self.min_fix_type}')
+            self.get_logger().info(f'  • Failure threshold: {self.gps_failure_threshold} consecutive')
+            if self.enable_sensor_checks:
+                self.get_logger().info(f'  • IMU: max inconsistency {self.max_imu_inconsistency}')
+                self.get_logger().info(f'  • Magnetometer: max inconsistency {self.max_mag_inconsistency}')
+                self.get_logger().info(f'  • Barometer: timeout {self.baro_timeout}s')
+                self.get_logger().info(f'  • RC: quality ≥ {self.min_rc_quality}%')
+        
         self.get_logger().info(f'  • Estimator: timeout {self.estimator_timeout}s')
         self.get_logger().info(f'🛡️ Safety Settings:')
         self.get_logger().info(f'  • Min altitude for RTL: {self.min_altitude}m')
-        self.get_logger().info(f'  • GPS failure threshold: {self.gps_failure_threshold} consecutive')
         self.get_logger().info(f'  • Command cooldown: {self.command_cooldown}s')
-        self.get_logger().info(f'  • SITL mode: {self.sitl_mode}')
         self.get_logger().info('='*60)
 
     def get_px4_mode_name(self, nav_state):
@@ -416,64 +421,80 @@ class FaultDetector(Node):
         """Check health of all sensors"""
         health_status = {}
         
-        # GPS health check
+        # GPS health check (critical for both SITL and real)
         if self.sensor_data['gps'] is None:
-            health_status['gps'] = False
+            # In SITL, GPS might take time to initialize
+            health_status['gps'] = self.sitl_mode and (current_time - self.node_start_time) < 60
         else:
             gps = self.sensor_data['gps']
-            gps_ok = (gps.fix_type >= self.min_fix_type and
-                     gps.satellites_used >= self.min_satellites)
             
-            # Check for timeout
+            # Adjust requirements for SITL
+            min_sats = 6 if self.sitl_mode else self.min_satellites
+            min_fix = 2 if self.sitl_mode else self.min_fix_type
+            
+            gps_ok = (gps.fix_type >= min_fix and
+                     gps.satellites_used >= min_sats)
+            
+            # Check for timeout (more lenient in SITL)
+            timeout = self.gps_timeout * 2 if self.sitl_mode else self.gps_timeout
             if self.sensor_timestamps['gps']:
-                if (current_time - self.sensor_timestamps['gps']) > self.gps_timeout:
+                if (current_time - self.sensor_timestamps['gps']) > timeout:
                     gps_ok = False
             
-            # Check jamming/spoofing
-            if hasattr(gps, 'jamming_state') and gps.jamming_state >= 2:
-                gps_ok = False
-                self.get_logger().warn('⚠️ GPS jamming detected!')
-            
-            if hasattr(gps, 'spoofing_state') and gps.spoofing_state >= 2:
-                gps_ok = False
-                self.get_logger().warn('⚠️ GPS spoofing detected!')
+            # Check jamming/spoofing (only in real craft)
+            if not self.sitl_mode:
+                if hasattr(gps, 'jamming_state') and gps.jamming_state >= 2:
+                    gps_ok = False
+                    self.get_logger().warn('⚠️ GPS jamming detected!')
+                
+                if hasattr(gps, 'spoofing_state') and gps.spoofing_state >= 2:
+                    gps_ok = False
+                    self.get_logger().warn('⚠️ GPS spoofing detected!')
             
             health_status['gps'] = gps_ok
         
-        # IMU health check (if enabled)
-        if self.enable_sensor_checks:
+        # Additional sensor checks (mainly for real craft)
+        if self.enable_sensor_checks and not self.sitl_mode:
             # IMU
             if self.sensor_timestamps['imu']:
                 health_status['imu'] = (current_time - self.sensor_timestamps['imu']) < self.imu_timeout
             else:
-                health_status['imu'] = self.sitl_mode  # Lenient in SITL
+                health_status['imu'] = True  # Don't fail if not receiving
             
             # Magnetometer
             if self.sensor_timestamps['mag']:
                 health_status['mag'] = (current_time - self.sensor_timestamps['mag']) < self.mag_timeout
             else:
-                health_status['mag'] = self.sitl_mode
+                health_status['mag'] = True
             
             # Barometer
             if self.sensor_timestamps['baro']:
                 health_status['baro'] = (current_time - self.sensor_timestamps['baro']) < self.baro_timeout
             else:
-                health_status['baro'] = self.sitl_mode
+                health_status['baro'] = True
             
-            # RC
+            # RC (optional in autonomous)
             if self.sensor_data['rc'] and self.sensor_timestamps['rc']:
                 rc_ok = (current_time - self.sensor_timestamps['rc']) < self.rc_timeout
                 if hasattr(self.sensor_data['rc'], 'rssi') and self.sensor_data['rc'].rssi < self.min_rc_quality:
                     rc_ok = False
                 health_status['rc'] = rc_ok
             else:
-                health_status['rc'] = True  # Don't fail on RC in autonomous flight
+                health_status['rc'] = True  # Don't fail on missing RC
+        elif self.sitl_mode:
+            # In SITL, assume sensors are healthy if not monitored
+            health_status['imu'] = True
+            health_status['mag'] = True
+            health_status['baro'] = True
+            health_status['rc'] = True
         
-        # Estimator
+        # Estimator (important for both SITL and real)
         if self.sensor_timestamps['estimator']:
-            health_status['estimator'] = (current_time - self.sensor_timestamps['estimator']) < self.estimator_timeout
+            timeout = self.estimator_timeout * 2 if self.sitl_mode else self.estimator_timeout
+            health_status['estimator'] = (current_time - self.sensor_timestamps['estimator']) < timeout
         else:
-            health_status['estimator'] = self.sitl_mode
+            # More lenient in SITL during startup
+            health_status['estimator'] = self.sitl_mode and (current_time - self.node_start_time) < 60
         
         # Update sensor health status
         for sensor, is_healthy in health_status.items():
@@ -555,7 +576,10 @@ class FaultDetector(Node):
             if not health_status.get('gps', True):
                 self.consecutive_gps_failures += 1
                 
-                if self.consecutive_gps_failures >= self.gps_failure_threshold:
+                # Adjust threshold for SITL
+                failure_threshold = self.gps_failure_threshold * 2 if self.sitl_mode else self.gps_failure_threshold
+                
+                if self.consecutive_gps_failures >= failure_threshold:
                     # Check altitude before triggering
                     if self.current_altitude < self.min_altitude:
                         self.get_logger().warn(f'GPS critical but altitude too low ({self.current_altitude:.1f}m)')
@@ -564,21 +588,32 @@ class FaultDetector(Node):
                     # Determine reason
                     if self.sensor_data['gps'] is None:
                         reason = "No GPS data"
-                    elif self.sensor_data['gps'].fix_type < self.min_fix_type:
+                    elif self.sensor_data['gps'].fix_type < (2 if self.sitl_mode else self.min_fix_type):
                         reason = f"GPS fix lost (type={self.sensor_data['gps'].fix_type})"
-                    elif self.sensor_data['gps'].satellites_used < self.min_satellites:
+                    elif self.sensor_data['gps'].satellites_used < (6 if self.sitl_mode else self.min_satellites):
                         reason = f"Low satellites ({self.sensor_data['gps'].satellites_used})"
                     else:
                         reason = "GPS timeout"
                     
-                    self.trigger_emergency_rtl(f"GPS failure: {reason}")
+                    # Only trigger RTL in real craft or severe SITL failures
+                    if not self.sitl_mode or self.consecutive_gps_failures >= failure_threshold * 2:
+                        self.trigger_emergency_rtl(f"GPS failure: {reason}")
+                    else:
+                        self.get_logger().warn(f'GPS degraded in SITL: {reason} ({self.consecutive_gps_failures}/{failure_threshold*2})')
             else:
                 self.consecutive_gps_failures = 0
             
-            # Check for critical estimator failure
-            if not health_status.get('estimator', True) and not self.sitl_mode:
-                if self.sensor_failure_counts['estimator'] > 3:
-                    self.trigger_emergency_rtl("Estimator failure")
+            # Check for critical estimator failure (less strict in SITL)
+            if not health_status.get('estimator', True):
+                if self.sitl_mode:
+                    # In SITL, only warn unless it's been down for a while
+                    if self.sensor_failure_counts['estimator'] > 10:
+                        self.get_logger().error('Estimator failure in SITL')
+                        self.trigger_emergency_rtl("Estimator failure")
+                else:
+                    # In real craft, act faster
+                    if self.sensor_failure_counts['estimator'] > 3:
+                        self.trigger_emergency_rtl("Estimator failure")
 
     def trigger_emergency_rtl(self, reason):
         """Trigger emergency RTL"""
