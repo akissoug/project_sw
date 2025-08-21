@@ -46,4 +46,30 @@ float ibatt = -1.0f; // no current sensor in simulation
 float ibatt = _armed ? 15.0f : 0.0f;  // Fixed 2A when armed, 0A when disarmed
 
 ```
+## Prerequisites
+- ROS 2 Jazzy
+- PX4 main version
+- MicroXRCE-DDS agent
+- px4.msgs for main px4 version
 
+## Architecture
+
+The system consists of three main ROS 2 nodes:
+
+### 1. PowerMonitor Node
+- Monitors battery status and power consumption
+- Calculates remaining flight time and return-to-launch requirements
+- Triggers automatic RTL when battery reaches critical levels
+- Uses Haversine formula for distance calculations
+
+### 2. FaultDetector Node
+- Monitors GPS integrity and system health
+- Detects GPS signal loss and sensor failures
+- Triggers emergency landing when positioning systems fail
+- Configurable thresholds for GPS fix quality
+
+### 3. MissionSupervisor Node
+- Central coordination and decision-making
+- Monitors communication links and mission duration
+- Implements failsafe backup logic
+- Maintains mission state machine
