@@ -65,7 +65,7 @@ The system consists of three main ROS 2 nodes:
 ### 2. FaultDetector Node
 - Monitors GPS integrity and system health
 - Detects GPS signal loss and sensor failures
-- Triggers emergency landing when positioning systems fail
+- Triggers emergency landing when pcritical systems fail
 - Configurable thresholds for GPS fix quality
 
 ### 3. MissionSupervisor Node
