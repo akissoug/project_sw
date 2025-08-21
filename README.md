@@ -25,6 +25,7 @@ The system consists of three main ROS 2 nodes:
 - PX4 main version
 - MicroXRCE-DDS agent
 - px4.msgs for main px4 version
+- clone the my_sw_project_v2 and then just copy paste the 3 nodes of this repository
   
   
 ## Modify PX4 code in order to be able to subscribe to these topics
